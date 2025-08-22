@@ -32,13 +32,24 @@ const generateHistoricalData = (symbol: string, days = 30) => {
   return data
 }
 
+// Color mapping for different symbols
+const colors: Record<string, string> = {
+  AAPL: "#3b82f6", // blue
+  TSLA: "#ef4444", // red
+  AMZN: "#f59e0b", // amber
+  MSFT: "#10b981", // emerald
+  NFLX: "#8b5cf6", // purple
+  DEFAULT: "#06b6d4", // cyan
+}
+
 export function StockChart({ symbol, data, type = "area" }: StockChartProps) {
   const chartData = data || generateHistoricalData(symbol)
+  const strokeColor = colors[symbol] || colors.DEFAULT
 
   const chartConfig = {
     price: {
       label: "Price",
-      color: "hsl(var(--chart-1))",
+      color: strokeColor,
     },
   }
 
@@ -47,7 +58,7 @@ export function StockChart({ symbol, data, type = "area" }: StockChartProps) {
       <ChartContainer config={chartConfig} className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /> {/* light gray grid */}
             <XAxis dataKey="date" tickFormatter={(value) => new Date(value).toLocaleDateString()} />
             <YAxis tickFormatter={(value) => `$${value}`} />
             <ChartTooltip
@@ -57,8 +68,8 @@ export function StockChart({ symbol, data, type = "area" }: StockChartProps) {
             <Area
               type="monotone"
               dataKey="price"
-              stroke="var(--color-price)"
-              fill="var(--color-price)"
+              stroke={strokeColor}
+              fill={strokeColor}
               fillOpacity={0.2}
             />
           </AreaChart>
@@ -71,14 +82,14 @@ export function StockChart({ symbol, data, type = "area" }: StockChartProps) {
     <ChartContainer config={chartConfig} className="h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /> {/* light gray grid */}
           <XAxis dataKey="date" tickFormatter={(value) => new Date(value).toLocaleDateString()} />
           <YAxis tickFormatter={(value) => `$${value}`} />
           <ChartTooltip
             content={<ChartTooltipContent />}
             labelFormatter={(value) => new Date(value).toLocaleDateString()}
           />
-          <Line type="monotone" dataKey="price" stroke="var(--color-price)" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="price" stroke={strokeColor} strokeWidth={2} dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </ChartContainer>
