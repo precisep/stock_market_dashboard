@@ -1,131 +1,200 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { TrendingUp, TrendingDown, DollarSign, Activity, Users, BarChart3 } from "lucide-react"
-import { StockChart } from "@/components/stock-chart"
+import StockChart from "@/components/stock-chart"
 import { TechnicalIndicators } from "@/components/technical-indicators"
-import { PerformanceMetrics } from "@/components/performance-metrics"
+import { Sparklines, SparklinesLine } from "react-sparklines"
+import { PieChart, Pie, Cell, Tooltip, Legend } from "recharts"
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts"
 
-// Top American companies for analysis
-const TOP_STOCKS = [
-  { symbol: "AAPL", name: "Apple Inc.", sector: "Technology" },
-  { symbol: "MSFT", name: "Microsoft Corporation", sector: "Technology" },
-  { symbol: "GOOGL", name: "Alphabet Inc.", sector: "Technology" },
-  { symbol: "AMZN", name: "Amazon.com Inc.", sector: "Consumer Discretionary" },
-  { symbol: "TSLA", name: "Tesla Inc.", sector: "Consumer Discretionary" },
-  { symbol: "META", name: "Meta Platforms Inc.", sector: "Technology" },
-  { symbol: "NVDA", name: "NVIDIA Corporation", sector: "Technology" },
-  { symbol: "JPM", name: "JPMorgan Chase & Co.", sector: "Financial Services" },
-  { symbol: "JNJ", name: "Johnson & Johnson", sector: "Healthcare" },
-  { symbol: "V", name: "Visa Inc.", sector: "Financial Services" },
-]
+interface Stock {
+  symbol: string
+  name: string
+  price: number
+  change: number
+  changePercent: number
+  volume: number
+  marketCap: number
+  pe?: number
+  sector: string
+  signal: "BUY" | "SELL" | "HOLD"
+  bars?: { t: string; o: number; h: number; l: number; c: number; v: number }[]
+  ytdReturn?: number
+  oneYearReturn?: number
+  volatility?: number
+  beta?: number
+  sharpeRatio?: number
+  dividendYield?: number
+  roe?: number
+  debtToEquity?: number
+  currentRatio?: number
+  quickRatio?: number
+}
 
-// Mock stock data - in production, this would come from a real API
-const generateMockStockData = (symbol: string) => ({
-  symbol,
-  price: Math.random() * 300 + 50,
-  change: (Math.random() - 0.5) * 20,
-  changePercent: (Math.random() - 0.5) * 10,
-  volume: Math.floor(Math.random() * 10000000) + 1000000,
-  marketCap: Math.floor(Math.random() * 2000) + 100,
-  pe: Math.random() * 30 + 5,
-  signal: Math.random() > 0.5 ? "BUY" : Math.random() > 0.3 ? "HOLD" : "SELL",
-})
+const formatLargeNumber = (num: number | undefined) => {
+  if (!num) return "0"
+  if (num >= 1e12) return (num / 1e12).toFixed(2) + "T"
+  if (num >= 1e9) return (num / 1e9).toFixed(2) + "B"
+  if (num >= 1e6) return (num / 1e6).toFixed(2) + "M"
+  if (num >= 1e3) return (num / 1e3).toFixed(2) + "K"
+  return num.toString()
+}
 
 export default function StockDashboard() {
-  const [stockData, setStockData] = useState<any[]>([])
-  const [selectedStock, setSelectedStock] = useState("AAPL")
-  const [lastUpdate, setLastUpdate] = useState(new Date())
+  const [stockData, setStockData] = useState<Stock[]>([])
+  const [selectedStock, setSelectedStock] = useState<string | null>(null)
+  const [lastUpdate, setLastUpdate] = useState<string>("")
+  const [mounted, setMounted] = useState(false)
 
-  // Simulate real-time data updates
   useEffect(() => {
-    const updateData = () => {
-      const newData = TOP_STOCKS.map((stock) => ({
-        ...stock,
-        ...generateMockStockData(stock.symbol),
-      }))
-      setStockData(newData)
-      setLastUpdate(new Date())
+    setMounted(true) // client-only render
+
+    const fetchData = async () => {
+      try {
+        const res = await fetch("/api/stocks/all")
+        const json = await res.json()
+        const data: Stock[] = json.data || []
+        setStockData(data)
+        setLastUpdate(new Date().toLocaleTimeString())
+        if (!selectedStock && data.length > 0) setSelectedStock(data[0].symbol)
+      } catch {
+        setStockData([])
+      }
     }
 
-    updateData()
-    const interval = setInterval(updateData, 5000) // Update every 5 seconds
-
+    fetchData()
+    const interval = setInterval(fetchData, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [selectedStock])
 
-  const selectedStockData = stockData.find((stock) => stock.symbol === selectedStock)
-
+  const selectedStockData = stockData.find((s) => s.symbol === selectedStock)
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value)
 
-  const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value)
+  const TabStatCard = ({
+    title,
+    value,
+    change,
+    changePercent,
+  }: {
+    title: string
+    value: string | number
+    change?: number
+    changePercent?: number
+  }) => (
+    <Card className="w-full hover:shadow-lg transition-shadow">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="text-center">
+        <div className="text-xl font-bold">{value}</div>
+        {change !== undefined && changePercent !== undefined && (
+          <div className={`flex items-center justify-center text-sm ${change >= 0 ? "text-chart-2" : "text-chart-5"}`}>
+            {change >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
+            {changePercent.toFixed(2)}%
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+
+  const signalData = [
+    { name: "Buy", value: stockData.filter(s => s.signal === "BUY").length },
+    { name: "Sell", value: stockData.filter(s => s.signal === "SELL").length },
+    { name: "Hold", value: stockData.filter(s => s.signal === "HOLD").length }
+  ]
+  const COLORS = ["#22c55e", "#ef4444", "#facc15"]
 
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-2 border-b pb-4">
           <div>
-            <h1 className="text-3xl font-bold">Stock Market Dashboard</h1>
-            <p className="text-muted-foreground">Real-time analysis of top American companies</p>
+            <h1 className="text-3xl font-bold text-center md:text-left">Stock Market Dashboard</h1>
+            <p className="text-muted-foreground text-center md:text-left">Real-time analysis of top American companies</p>
           </div>
-          <div className="text-right">
+          <div className="text-center md:text-right">
             <p className="text-sm text-muted-foreground">Last updated</p>
-            <p className="text-sm font-mono">{lastUpdate.toLocaleTimeString()}</p>
+            {mounted && <p className="text-sm font-mono">{lastUpdate}</p>}
           </div>
         </div>
 
         {/* Market Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="w-full text-center hover:shadow-lg transition-shadow">
+            <CardHeader className="flex justify-between items-center pb-2">
               <CardTitle className="text-sm font-medium">Market Cap</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <DollarSign className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">$2.4T</div>
-              <p className="text-xs text-muted-foreground">+2.1% from yesterday</p>
+              <div className="text-2xl font-bold">
+                {formatLargeNumber(stockData.reduce((sum, s) => sum + (s.marketCap || 0), 0))}
+              </div>
+              {mounted && (
+                <Sparklines data={stockData.map(s => s.marketCap || 0)}>
+                  <SparklinesLine color="#3b82f6" />
+                </Sparklines>
+              )}
+              <p className="text-xs text-muted-foreground">Total of listed stocks</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <Card className="w-full text-center hover:shadow-lg transition-shadow">
+            <CardHeader className="flex justify-between items-center pb-2">
               <CardTitle className="text-sm font-medium">Active Stocks</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
+              <Activity className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stockData.length}</div>
+              {mounted && (
+                <Sparklines data={stockData.map(() => Math.random() * 10)}>
+                  <SparklinesLine color="#facc15" />
+                </Sparklines>
+              )}
               <p className="text-xs text-muted-foreground">Top US companies</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <Card className="w-full text-center hover:shadow-lg transition-shadow">
+            <CardHeader className="flex justify-between items-center pb-2">
               <CardTitle className="text-sm font-medium">Avg Volume</CardTitle>
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+              <BarChart3 className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
                 {stockData.length > 0
-                  ? formatNumber(stockData.reduce((acc, stock) => acc + stock.volume, 0) / stockData.length)
+                  ? formatLargeNumber(
+                      Math.round(stockData.reduce((acc, s) => acc + (s.volume || 0), 0) / stockData.length)
+                    )
                   : "0"}
               </div>
-              <p className="text-xs text-muted-foreground">Daily average</p>
+              {mounted && (
+                <Sparklines data={stockData.map(s => s.volume || 0)}>
+                  <SparklinesLine color="#22c55e" />
+                </Sparklines>
+              )}
+              <p className="text-xs text-muted-foreground">Daily average trend</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Signals</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
+          <Card className="w-full text-center hover:shadow-lg transition-shadow">
+            <CardHeader className="flex justify-between items-center pb-2">
+              <CardTitle className="text-sm font-medium">Buy Signals</CardTitle>
+              <Users className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stockData.filter((stock) => stock.signal === "BUY").length}</div>
-              <p className="text-xs text-muted-foreground">Buy signals active</p>
+              <div className="text-2xl font-bold">{signalData[0].value}</div>
+              {mounted && (
+                <Sparklines data={[signalData[0].value, signalData[1].value, signalData[2].value]}>
+                  <SparklinesLine color="#22c55e" />
+                </Sparklines>
+              )}
+              <p className="text-xs text-muted-foreground">Active buy signals</p>
             </CardContent>
           </Card>
         </div>
@@ -133,7 +202,7 @@ export default function StockDashboard() {
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Stock List */}
-          <Card className="lg:col-span-1">
+          <Card className="lg:col-span-1 w-full max-h-[80vh] overflow-y-auto">
             <CardHeader>
               <CardTitle>Top Stocks</CardTitle>
               <CardDescription>Click to analyze</CardDescription>
@@ -142,7 +211,7 @@ export default function StockDashboard() {
               {stockData.map((stock) => (
                 <div
                   key={stock.symbol}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
                     selectedStock === stock.symbol ? "bg-primary/10 border-primary" : "hover:bg-muted/50"
                   }`}
                   onClick={() => setSelectedStock(stock.symbol)}
@@ -155,7 +224,9 @@ export default function StockDashboard() {
                     <div className="text-right">
                       <div className="font-mono text-sm">{formatCurrency(stock.price)}</div>
                       <div
-                        className={`flex items-center text-xs ${stock.change >= 0 ? "text-chart-2" : "text-chart-5"}`}
+                        className={`flex items-center text-xs ${
+                          stock.change >= 0 ? "text-chart-2" : "text-chart-5"
+                        }`}
                       >
                         {stock.change >= 0 ? (
                           <TrendingUp className="h-3 w-3 mr-1" />
@@ -167,31 +238,32 @@ export default function StockDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-2">
-                    <Badge variant="outline" className="text-xs">
-                      {stock.sector}
-                    </Badge>
+                    <Badge variant="outline" className="text-xs">{stock.sector}</Badge>
                     <Badge
-                      variant={
-                        stock.signal === "BUY" ? "default" : stock.signal === "SELL" ? "destructive" : "secondary"
-                      }
+                      variant={stock.signal === "BUY" ? "default" : stock.signal === "SELL" ? "destructive" : "secondary"}
                       className="text-xs"
                     >
                       {stock.signal}
                     </Badge>
                   </div>
+                  {mounted && (
+                    <Sparklines data={stock.bars?.map(b => b.c) || []} width={100} height={20}>
+                      <SparklinesLine color={stock.change >= 0 ? "#22c55e" : "#ef4444"} />
+                    </Sparklines>
+                  )}
                 </div>
               ))}
             </CardContent>
           </Card>
 
-          {/* Selected Stock Analysis */}
-          <Card className="lg:col-span-2">
+          {/* Selected Stock Tabs */}
+          <Card className="lg:col-span-2 w-full max-w-4xl">
             <CardHeader>
               <CardTitle>{selectedStockData?.name || "Select a stock"}</CardTitle>
-              <CardDescription>{selectedStockData?.symbol} - Detailed Analysis</CardDescription>
+              <CardDescription>{selectedStockData?.symbol || ""} - Detailed Analysis</CardDescription>
             </CardHeader>
             <CardContent>
-              {selectedStockData ? (
+              {mounted && selectedStockData ? (
                 <Tabs defaultValue="overview" className="w-full">
                   <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -201,101 +273,67 @@ export default function StockDashboard() {
                     <TabsTrigger value="signals">Signals</TabsTrigger>
                   </TabsList>
 
+                  {/* Overview */}
                   <TabsContent value="overview" className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">Current Price</p>
-                        <p className="text-2xl font-bold font-mono">{formatCurrency(selectedStockData.price)}</p>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">Change</p>
-                        <p
-                          className={`text-2xl font-bold ${
-                            selectedStockData.change >= 0 ? "text-chart-2" : "text-chart-5"
-                          }`}
-                        >
-                          {selectedStockData.change >= 0 ? "+" : ""}
-                          {selectedStockData.change.toFixed(2)}({selectedStockData.changePercent.toFixed(2)}%)
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">Volume</p>
-                        <p className="text-lg font-semibold">{formatNumber(selectedStockData.volume)}</p>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">Market Cap</p>
-                        <p className="text-lg font-semibold">${selectedStockData.marketCap}B</p>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">P/E Ratio</p>
-                        <p className="text-lg font-semibold">{selectedStockData.pe.toFixed(2)}</p>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">Sector</p>
-                        <Badge variant="outline">{selectedStockData.sector}</Badge>
-                      </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-stretch">
+                      <TabStatCard
+                        title="Price"
+                        value={formatCurrency(selectedStockData.price)}
+                        change={selectedStockData.change}
+                        changePercent={selectedStockData.changePercent}
+                      />
+                      <TabStatCard title="Market Cap" value={formatLargeNumber(selectedStockData.marketCap)} />
+                      <TabStatCard title="Volume" value={formatLargeNumber(selectedStockData.volume)} />
+                      {selectedStockData.pe !== undefined && <TabStatCard title="P/E Ratio" value={selectedStockData.pe.toFixed(2)} />}
+                      <TabStatCard title="Sector" value={selectedStockData.sector} />
+                      <TabStatCard title="Signal" value={selectedStockData.signal} />
                     </div>
                   </TabsContent>
 
+                  {/* Chart */}
                   <TabsContent value="chart" className="space-y-4">
-                    <StockChart symbol={selectedStockData.symbol} type="area" />
+                    <StockChart symbol={selectedStockData.symbol} type="line" />
                     <div className="text-sm text-muted-foreground text-center">
                       30-day price movement with volume indicators
                     </div>
                   </TabsContent>
 
+                  {/* Technical */}
                   <TabsContent value="technical" className="space-y-4">
-                    <TechnicalIndicators stockData={selectedStockData} />
+                    {selectedStockData.bars && <TechnicalIndicators bars={selectedStockData.bars} />}
                   </TabsContent>
 
+                  {/* Performance */}
                   <TabsContent value="performance" className="space-y-4">
-                    <PerformanceMetrics stockData={selectedStockData} />
+                    <ResponsiveContainer width="100%" height={300}>
+                      <RadarChart
+                        cx="50%" cy="50%" outerRadius="80%" data={[
+                          { metric: "Volatility", value: selectedStockData.volatility || 0 },
+                          { metric: "Beta", value: selectedStockData.beta || 0 },
+                          { metric: "Sharpe", value: selectedStockData.sharpeRatio || 0 },
+                          { metric: "ROE", value: selectedStockData.roe || 0 },
+                          { metric: "Div Yield", value: selectedStockData.dividendYield || 0 }
+                        ]}
+                      >
+                        <PolarGrid />
+                        <PolarAngleAxis dataKey="metric" />
+                        <PolarRadiusAxis />
+                        <Radar dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
+                      </RadarChart>
+                    </ResponsiveContainer>
                   </TabsContent>
 
+                  {/* Signals */}
                   <TabsContent value="signals" className="space-y-4">
-                    <div className="text-center p-6 space-y-4">
-                      <Badge
-                        variant={
-                          selectedStockData.signal === "BUY"
-                            ? "default"
-                            : selectedStockData.signal === "SELL"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                        className="text-lg px-4 py-2"
-                      >
-                        {selectedStockData.signal}
-                      </Badge>
-                      <p className="text-sm text-muted-foreground">
-                        Current trading signal based on technical analysis
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div className="text-center">
-                          <p className="font-semibold">Confidence</p>
-                          <p className="text-muted-foreground">
-                            {selectedStockData.signal === "BUY"
-                              ? "High"
-                              : selectedStockData.signal === "SELL"
-                                ? "Medium"
-                                : "Low"}
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold">Time Horizon</p>
-                          <p className="text-muted-foreground">Short-term</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold">Risk Level</p>
-                          <p className="text-muted-foreground">
-                            {selectedStockData.signal === "BUY"
-                              ? "Medium"
-                              : selectedStockData.signal === "SELL"
-                                ? "High"
-                                : "Low"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie data={signalData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                          {signalData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index]} />)}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </TabsContent>
                 </Tabs>
               ) : (
