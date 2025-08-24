@@ -10,7 +10,7 @@ if (!ALPACA_API_KEY || !ALPACA_SECRET_KEY) {
   throw new Error("Missing Alpaca API key or secret in .env.local");
 }
 
-const VALID_SYMBOLS = ["SPY", "QQQ", "IWM", "F", "AAPL"];
+const VALID_SYMBOLS = ["SPY", "QQQ", "IWM", "F", "AAPL",'GOOGL','MSFT','AMZN','TSLA','NVDA'];
 
 const STOCK_INFO: Record<string, { name: string; sector: string; marketCap: number; pe: number }> = {
   SPY: { name: "SPDR S&P 500 ETF Trust", sector: "ETF", marketCap: 400, pe: 20 },
